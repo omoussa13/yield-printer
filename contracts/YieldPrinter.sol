@@ -13,6 +13,13 @@ import {Comptroller} from './dependencies/compound/Comptroller.sol';
 contract YieldPrinter is FlashLoanReceiverBase, Ownable {
     using SafeMath for uint256;
 
+    struct LoanData {
+        IERC20 underlying;
+        CERC20 cToken;
+        uint256 flashLoanedAmount;
+        uint256 flashLoanPremium;
+    }
+
     Comptroller public immutable COMPTROLLER;
 
     // Deposit/Withdraw values
@@ -49,15 +56,18 @@ contract YieldPrinter is FlashLoanReceiverBase, Ownable {
         // Your logic goes here.
         //
         (address cErc20Contract, uint256 totalAmount, bytes32 operation) = abi.decode(params, (address, uint256, bytes32));
+        LoanData memory loanData;
+        loanData.underlying = IERC20(assets[0]);
+        loanData.cToken = CERC20(cErc20Contract);
+        loanData.flashLoanedAmount = amounts[0];
+        loanData.flashLoanPremium = premiums[0];
 
         if(operation == DEPOSIT) {
-            CERC20 cToken = CERC20(cErc20Contract);
-
             // approve underlying asset to be able to be transfered by the cToken contract
-            IERC20(assets[0]).approve(cErc20Contract, totalAmount);
+            loanData.underlying.approve(cErc20Contract, totalAmount);
 
             // Mint cTokens
-            cToken.mint(totalAmount);
+            loanData.cToken.mint(totalAmount);
 
             // Enter the market for the supplied asset to use it as collateral
             address[] memory cTokens = new address[](1);
@@ -65,17 +75,22 @@ contract YieldPrinter is FlashLoanReceiverBase, Ownable {
             COMPTROLLER.enterMarkets(cTokens);
 
             // Borrow token
-            uint256 borrowAmount = amounts[0].add(premiums[0]);
-            cToken.borrow(borrowAmount);
+            uint256 borrowAmount = loanData.flashLoanedAmount.add(loanData.flashLoanPremium);
+            loanData.cToken.borrow(borrowAmount);
         }
 
         if(operation == WITHDRAW) {
+            // approve underlying asset to be able to be transfered by the cToken contract
+            loanData.underlying.approve(cErc20Contract, loanData.flashLoanedAmount);
+
+            uint256 error = loanData.cToken.repayBorrow(loanData.flashLoanedAmount);
+            require(error == 0, "RepayBorrow Error");
+
+            uint256 cTokenBalance = loanData.cToken.balanceOf(address(this));
+
+            // Retrieve deposited assets
+            loanData.cToken.redeem(cTokenBalance);
         }
-        
-        // At the end of your logic above, this contract owes
-        // the flashloaned amounts + premiums.
-        // Therefore ensure your contract has enough to repay
-        // these amounts.
         
         // Approve the LendingPool contract allowance to *pull* the owed amount
         for (uint i = 0; i < assets.length; i++) {
@@ -86,7 +101,42 @@ contract YieldPrinter is FlashLoanReceiverBase, Ownable {
         return true;
     }
 
-    function takeLoan(address asset, uint256 amount, bytes memory params) public {
+    function depositToComp(address token, address cToken, uint256 amount) external onlyOwner {
+        // Total deposit: 40% amount, 60% flash loan
+        uint256 totalAmount = (amount.mul(5)).div(2);
+
+        // loan is 70% of total deposit
+        uint256 flashLoanAmount = totalAmount.sub(amount);
+        bytes memory data = abi.encode(cToken, totalAmount, DEPOSIT);
+
+        // take loan
+        takeLoan(token, flashLoanAmount, data);
+    }
+
+    function withdrawFromComp(address token, address cToken) external onlyOwner {
+        // get the borrow balance
+        uint256 borrowBalance = CERC20(cToken).borrowBalanceCurrent(address(this));
+        require(borrowBalance > 0, "Borrowed balance must be > 0");
+
+        bytes memory data = abi.encode(cToken, 0, WITHDRAW);
+
+        // take flash loan to repay COMPOUND loan
+        takeLoan(token, borrowBalance, data);
+    }
+
+    function withdrawToken(address _tokenAddress) external onlyOwner {
+        uint256 balance = IERC20(_tokenAddress).balanceOf(address(this));
+        require(IERC20(_tokenAddress).transfer(owner(), balance), "Failed to withdraw token");
+    }
+
+    function withdrawAllEth() external onlyOwner {
+        uint amount = address(this).balance;
+
+        (bool success, ) = owner().call{value: amount}("");
+        require(success, "Failed to send Ether");
+    }
+
+    function takeLoan(address asset, uint256 amount, bytes memory params) internal {
         address receiverAddress = address(this);
         // 0 = no debt, 1 = stable, 2 = variable
         uint256 noDebt = 0;
@@ -113,31 +163,8 @@ contract YieldPrinter is FlashLoanReceiverBase, Ownable {
         );
     }
 
-    function depositToComp(address token, address cToken, uint256 amount) external onlyOwner {
-        // Total deposit: 40% amount, 60% flash loan
-        uint256 totalAmount = (amount.mul(5)).div(2);
-
-        // loan is 70% of total deposit
-        uint256 flashLoanAmount = totalAmount.sub(amount);
-        bytes memory data = abi.encode(cToken, totalAmount, DEPOSIT);
-
-        // take loan
-        takeLoan(token, flashLoanAmount, data);
-    }
-
-    function withdrawFromComp(address token, address cToken, uint256 amount) external onlyOwner {
-
-    }
-
-    function withdrawToken(address _tokenAddress) external onlyOwner {
-        uint256 balance = IERC20(_tokenAddress).balanceOf(address(this));
-        require(IERC20(_tokenAddress).transfer(owner(), balance), "Failed to withdraw token");
-    }
-
-    function withdrawAllEth() external onlyOwner {
-        uint amount = address(this).balance;
-
-        (bool success, ) = owner().call{value: amount}("");
-        require(success, "Failed to send Ether");
-    }
+    /**
+        can receive ETH
+     */
+    receive() external payable {}
 }

@@ -18,5 +18,13 @@ interface CERC20 {
 
     function borrowBalanceCurrent(address) external returns (uint256);
 
+    function borrowBalanceStored(address) external view returns (uint256);
+
     function repayBorrow(uint256) external returns (uint256);
+
+    function balanceOf(address) external view returns (uint256);
+
+    function balanceOfUnderlying(address) external returns (uint256);
+
+    function approve(address, uint256) external returns (bool);
 }
