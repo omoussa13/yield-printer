@@ -5,6 +5,7 @@
     "strict": true,
     "esModuleInterop": true,
     "outDir": "dist",
+    "useUnknownInCatchVariables": false,
   },
   "exclude": [
     "dist",
@@ -12,7 +13,7 @@
   ],
   "include": [
     "./test",
-    "./scripts",
+    "./deployment",
     "./utils",
   ],
   "files": [
