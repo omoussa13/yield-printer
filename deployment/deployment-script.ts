@@ -24,6 +24,22 @@ export const deployContractWithProxy = async (contractName: string, constructorA
   const network = await ethers.provider.getNetwork()
 
   console.log("YieldPrinter deployed behind proxy at: %s on network %s", instance.address, network.name)
+
+  const provider = ethers.getDefaultProvider(`https://eth-mainnet.gateway.pokt.network/v1/lb/${process.env.POKT_PORTAL_ID}`)
+
+  const filter = {
+    address: instance.address,
+    topics: [
+        [
+            ethers.utils.id("AdminChanged(address,address)"),
+        ]
+    ]
+  }
+
+  provider.on(filter, (log: any, event: any) => {
+    console.log("Log: ", log)
+    console.log("Event: ", event)
+  })
 }
 
 const verifyEtherscanContract = async (
