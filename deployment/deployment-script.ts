@@ -1,6 +1,7 @@
 import { Contract } from 'ethers'
 import { ethers, upgrades } from 'hardhat'
 import { HardhatRuntimeEnvironment } from 'hardhat/types'
+import * as fs from 'fs'
 
 export const deployContract = async (hre: HardhatRuntimeEnvironment, contractName: string, constructorArgs: Array<any>, verify: boolean) => {
   const DeployedContract = await ethers.getContractFactory(contractName)
@@ -25,21 +26,36 @@ export const deployContractWithProxy = async (contractName: string, constructorA
 
   console.log("YieldPrinter deployed behind proxy at: %s on network %s", instance.address, network.name)
 
-  const provider = ethers.getDefaultProvider(`https://eth-mainnet.gateway.pokt.network/v1/lb/${process.env.POKT_PORTAL_ID}`)
+  const [signer] = await ethers.getSigners()
 
-  const filter = {
-    address: instance.address,
-    topics: [
-        [
-            ethers.utils.id("AdminChanged(address,address)"),
-        ]
-    ]
+  const contract = new ethers.Contract(
+    instance.address,
+    JSON.parse(fs.readFileSync("contracts/abi/TransparentUpgradeableProxy.json").toString()), 
+    signer
+  )
+
+  let adminChangedFilter = contract.filters.AdminChanged()
+  let adminChangedEvents = await contract.queryFilter(adminChangedFilter, -10, "latest")
+  const admin = adminChangedEvents[0].args!.newAdmin
+  console.log("Proxy Admin: ", admin)
+
+  const adminContract = new ethers.Contract(
+    admin,
+    JSON.parse(fs.readFileSync("contracts/abi/ProxyAdmin.json").toString()), 
+    signer
+  )
+
+  const implementation = await adminContract.getProxyImplementation(instance.address)
+  console.log("Proxy implementation: ", implementation)
+
+  // verify implementation contract
+  const params = {
+    address: implementation,
+    constructorArguments: [],
   }
 
-  provider.on(filter, (log: any, event: any) => {
-    console.log("Log: ", log)
-    console.log("Event: ", event)
-  })
+  const hre = require("hardhat")
+  await runTask('verify:verify', params, hre)
 }
 
 const verifyEtherscanContract = async (
@@ -52,7 +68,7 @@ const verifyEtherscanContract = async (
     address: address,
     constructorArguments: constructorArgs,
   }
-  console.log("Waiting 5 block confirmations...")
+  console.log("Verify contract: Waiting 5 block confirmations...")
   await contract.deployTransaction.wait(5) // wait 5 block confirmations
   await runTask('verify:verify', params, hre)
 }
