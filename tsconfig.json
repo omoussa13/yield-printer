@@ -15,6 +15,7 @@
     "./test",
     "./deployment",
     "./utils",
+    "./interaction",
   ],
   "files": [
     "./hardhat.config.ts"

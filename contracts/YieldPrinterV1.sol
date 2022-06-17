@@ -33,7 +33,7 @@ contract YieldPrinterV1 is IFlashLoanReceiver, YieldPrinterStorage, OwnableUpgra
 
     function initialize(address lpAddressesProvider, address comptroller) public initializer {
         __Ownable_init();
-        YieldPrinterStorage.initializeStorage(comptroller, lpAddressesProvider);
+        initializeStorage(comptroller, lpAddressesProvider);
     }
 
     function executeOperation(

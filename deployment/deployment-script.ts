@@ -30,7 +30,7 @@ export const deployContractWithProxy = async (contractName: string, constructorA
 
   const contract = new ethers.Contract(
     instance.address,
-    JSON.parse(fs.readFileSync("contracts/abi/TransparentUpgradeableProxy.json").toString()), 
+    JSON.parse(fs.readFileSync("contracts/abi/TransparentUpgradeableProxy.json").toString()),
     signer
   )
 
@@ -41,7 +41,7 @@ export const deployContractWithProxy = async (contractName: string, constructorA
 
   const adminContract = new ethers.Contract(
     admin,
-    JSON.parse(fs.readFileSync("contracts/abi/ProxyAdmin.json").toString()), 
+    JSON.parse(fs.readFileSync("contracts/abi/ProxyAdmin.json").toString()),
     signer
   )
 
@@ -63,7 +63,7 @@ const verifyEtherscanContract = async (
   constructorArgs: (string | string[])[],
   hre: HardhatRuntimeEnvironment,
 ) => {
-  const { address } = contract 
+  const { address } = contract
   const params = {
     address: address,
     constructorArguments: constructorArgs,
@@ -80,7 +80,7 @@ const runTask = async (
 ) => {
   try {
     await hre.run(task, params)
-  } catch(error) {
+  } catch (error) {
     if (error.message.includes("Reason: Already Verified")) {
       console.log("Contract is already verified!");
     } else {
